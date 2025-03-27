@@ -232,7 +232,7 @@ function App() {
               placeholder="Paste your YouTube video link here..."
               className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all pr-12 bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
             />
-            <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 hover:text-green-500 transition-colors " />
           </div>
 
           {/* Error Message */}
