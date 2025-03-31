@@ -257,7 +257,7 @@ def download():
             file_buffer, filename = download_thumbnail(url)
         else:
             return jsonify({'error': 'Invalid format type'}), 400
-            
+        
         if file_buffer and filename:
             return send_file(
                 file_buffer,
@@ -267,7 +267,7 @@ def download():
             )
         else:
             return jsonify({'error': 'Failed to download content'}), 500
-            
+    
     except Exception as e:
         print(f"Download failed: {str(e)}")
         return jsonify({'error': str(e)}), 500

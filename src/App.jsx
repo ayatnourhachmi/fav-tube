@@ -72,6 +72,21 @@ function App() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Close search results dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const searchContainer = document.getElementById('search-container');
+      if (searchContainer && !searchContainer.contains(event.target)) {
+        setShowResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const searchVideos = async (query) => {
     setIsSearching(true);
     try {
@@ -253,9 +268,12 @@ function App() {
             </button>
           </div>
 
+          {/* Create a portal div for search results to escape any containment issues */}
+          <div id="search-results-portal"></div>
+
           {/* Search Input */}
           {inputMode === 'search' && (
-            <div className="relative group">
+            <div id="search-container" className="relative group">
               <input
                 type="text"
                 value={searchQuery}
@@ -267,6 +285,45 @@ function App() {
                 <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 animate-spin" />
               ) : (
                 <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 hover:text-green-500 transition-colors" />
+              )}
+
+              {/* Search Results Dropdown with very high z-index and fixed positioning */}
+              {showResults && searchResults.length > 0 && (
+                <div className="fixed inset-0 flex items-start justify-center z-[1000] pointer-events-none pt-32 px-4" style={{ top: '0', left: '0', width: '100%' }}>
+                  <div 
+                    className="bg-white rounded-xl shadow-xl border border-red-100 overflow-hidden pointer-events-auto max-h-96 overflow-y-auto"
+                    style={{ 
+                      width: document.getElementById('search-container')?.offsetWidth || 'auto',
+                      maxWidth: 'calc(100vw - 2rem)'
+                    }}
+                  >
+                    {searchResults.map((video) => (
+                      <div
+                        key={video.id}
+                        onClick={() => handleVideoSelect(video.id)}
+                        className="flex items-center p-4 hover:bg-red-50 cursor-pointer transition-colors border-b border-red-50 last:border-b-0"
+                      >
+                        <div className="relative w-32 h-20 flex-shrink-0">
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="w-full h-full object-cover rounded-md shadow-sm"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://via.placeholder.com/320x180?text=No+Thumbnail`;
+                            }}
+                          />
+                        </div>
+                        <div className="ml-4 flex-1 min-w-0">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">{video.title}</h3>
+                          <p className="text-xs text-gray-500 flex items-center">
+                            <span className="truncate">{video.channel}</span>
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -281,37 +338,6 @@ function App() {
                 placeholder="Paste your YouTube video link here..."
                 className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
               />
-            </div>
-          )}
-
-          {/* Search Results Dropdown */}
-          {inputMode === 'search' && showResults && searchResults.length > 0 && (
-            <div className="absolute z-20 w-full mt-1 bg-white rounded-xl shadow-lg border border-red-100 max-h-96 overflow-y-auto">
-              {searchResults.map((video) => (
-                <div
-                  key={video.id}
-                  onClick={() => handleVideoSelect(video.id)}
-                  className="flex items-center p-4 hover:bg-red-50 cursor-pointer transition-colors border-b border-red-50 last:border-b-0"
-                >
-                  <div className="relative w-32 h-20 flex-shrink-0">
-                    <img
-                      src={video.thumbnail}
-                      alt={video.title}
-                      className="w-full h-full object-cover rounded-md shadow-sm"
-                      onError={(e) => {
-                        e.target.onerror = null;
-                        e.target.src = `https://via.placeholder.com/320x180?text=No+Thumbnail`;
-                      }}
-                    />
-                  </div>
-                  <div className="ml-4 flex-1 min-w-0">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">{video.title}</h3>
-                    <p className="text-xs text-gray-500 flex items-center">
-                      <span className="truncate">{video.channel}</span>
-                    </p>
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 
@@ -419,11 +445,11 @@ function App() {
         </div>
         {/* Footer Note */}
         <div className="text-center mt-8 space-y-2">
-          <p className="text-sm text-gray-600">
-            Made with <Heart className="w-4 h-4 inline-block text-red-600 animate-pulse" /> for YouTube lovers
-          </p>
-          <p className="text-xs text-gray-500">Select format • Paste link • Download • Enjoy!</p>
-        </div>
+  <p className="text-sm text-gray-600">
+  Made with <span className="inline-flex items-center"><Heart className="w-4 h-4 mx-1 text-red-600" /></span> for YouTube lovers
+</p>
+  <p className="text-xs text-gray-500">Select format • Paste link • Download • Enjoy!</p>
+</div>
       </div>
     </div>
   );
