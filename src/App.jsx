@@ -21,6 +21,11 @@ function App() {
   const [error, setError] = useState(null);
   const [downloadReady, setDownloadReady] = useState(false);
   const [downloadData, setDownloadData] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showResults, setShowResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [inputMode, setInputMode] = useState('search'); // 'search' or 'url'
 
   const formatOptions = [
     { id: 'video', icon: Video, label: 'Video', color: 'from-red-600 to-red-700' },
@@ -52,6 +57,73 @@ function App() {
       setDownloadData(null);
     }
   }, [url, selectedFormat, selectedQuality]);
+
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery.trim()) {
+        searchVideos(searchQuery);
+      } else {
+        setSearchResults([]);
+        setShowResults(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const searchVideos = async (query) => {
+    setIsSearching(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/search?q=${encodeURIComponent(query)}`);
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+      const data = await response.json();
+      
+      // Ensure each result has a valid thumbnail URL
+      const processedData = data.map(video => ({
+        ...video,
+        // Make sure thumbnail URL is complete and valid
+        thumbnail: ensureValidThumbnailUrl(video.thumbnail || `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`)
+      }));
+      
+      setSearchResults(processedData);
+      setShowResults(true);
+    } catch (err) {
+      console.error('Search error:', err);
+      setError('Failed to search videos. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Helper function to ensure thumbnail URLs are valid
+  const ensureValidThumbnailUrl = (url) => {
+    if (!url) {
+      return `https://via.placeholder.com/320x180?text=No+Thumbnail`;
+    }
+    
+    // If URL is relative, make it absolute
+    if (url.startsWith('/')) {
+      return `http://localhost:5000${url}`;
+    }
+    
+    // If URL doesn't have a protocol, add https
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return `https://${url}`;
+    }
+    
+    return url;
+  };
+
+  const handleVideoSelect = (videoId) => {
+    setUrl(`https://www.youtube.com/watch?v=${videoId}`);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowResults(false);
+    setInputMode('url'); // Switch to URL input mode after selection
+  };
 
   const handleProcessVideo = async () => {
     setError(null);
@@ -157,8 +229,94 @@ function App() {
         {/* Main Card */}
         <div className="bg-gradient-to-br from-red-100/90 to-red-50/90 backdrop-blur-lg rounded-3xl shadow-xl p-8 border border-red-200">
 
+          {/* Input Mode Tabs */}
+          <div className="flex space-x-2 mb-4">
+            <button
+              onClick={() => setInputMode('search')}
+              className={`flex-1 py-2 px-4 rounded-xl font-medium transition-all ${
+                inputMode === 'search'
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                  : 'bg-red-50 text-gray-700 hover:bg-red-100'
+              }`}
+            >
+              Search Videos
+            </button>
+            <button
+              onClick={() => setInputMode('url')}
+              className={`flex-1 py-2 px-4 rounded-xl font-medium transition-all ${
+                inputMode === 'url'
+                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                  : 'bg-red-50 text-gray-700 hover:bg-red-100'
+              }`}
+            >
+              Paste URL
+            </button>
+          </div>
+
+          {/* Search Input */}
+          {inputMode === 'search' && (
+            <div className="relative group">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search YouTube videos..."
+                className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all pr-12 bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
+              />
+              {isSearching ? (
+                <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 animate-spin" />
+              ) : (
+                <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 hover:text-green-500 transition-colors" />
+              )}
+            </div>
+          )}
+
+          {/* URL Input */}
+          {inputMode === 'url' && (
+            <div className="relative group">
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Paste your YouTube video link here..."
+                className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
+              />
+            </div>
+          )}
+
+          {/* Search Results Dropdown */}
+          {inputMode === 'search' && showResults && searchResults.length > 0 && (
+            <div className="absolute z-20 w-full mt-1 bg-white rounded-xl shadow-lg border border-red-100 max-h-96 overflow-y-auto">
+              {searchResults.map((video) => (
+                <div
+                  key={video.id}
+                  onClick={() => handleVideoSelect(video.id)}
+                  className="flex items-center p-4 hover:bg-red-50 cursor-pointer transition-colors border-b border-red-50 last:border-b-0"
+                >
+                  <div className="relative w-32 h-20 flex-shrink-0">
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      className="w-full h-full object-cover rounded-md shadow-sm"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = `https://via.placeholder.com/320x180?text=No+Thumbnail`;
+                      }}
+                    />
+                  </div>
+                  <div className="ml-4 flex-1 min-w-0">
+                    <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">{video.title}</h3>
+                    <p className="text-xs text-gray-500 flex items-center">
+                      <span className="truncate">{video.channel}</span>
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Format Buttons */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
+          <div className="grid grid-cols-3 gap-3 mb-6 mt-6">
             {formatOptions.map((format) => {
               const Icon = format.icon;
               return (
@@ -186,54 +344,42 @@ function App() {
                 {selectedFormat === 'video' ? 'Select Video Quality' : 'Select Audio Quality'}
               </label>
               <div className="w-full relative inline-block text-left">
-  <button 
-    id="qualityDropdownButton" 
-    data-dropdown-toggle="qualityDropdown" 
-    className="text-gray-700 bg-white/50 hover:bg-gray-50 border border-red-200 focus:border-red-500 focus:outline-none focus:ring-red-100 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-between w-full shadow-sm"
-    type="button"
-    onClick={() => document.getElementById('qualityDropdown').classList.toggle('hidden')}
-  >
-    {selectedFormat === 'video' ? `${selectedQuality}p` : `${selectedQuality}kbps`}
-    <svg className="w-2.5 h-2.5 ms-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
-      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 1 4 4 4-4"/>
-    </svg>
-  </button>
-  
-  {/* Dropdown menu */}
-  <div id="qualityDropdown" className="z-10 hidden bg-white divide-y divide-gray-100 rounded-xl shadow-sm w-full mt-1 border border-red-100">
-    <ul className="py-2 text-sm text-gray-700" aria-labelledby="qualityDropdownButton">
-      {qualityOptions[selectedFormat].map((quality) => (
-        <li key={quality}>
-          <a 
-            href="#" 
-            className="block px-4 py-2 hover:bg-red-50"
-            onClick={(e) => {
-              e.preventDefault();
-              setSelectedQuality(quality);
-              document.getElementById('qualityDropdown').classList.add('hidden');
-            }}
-          >
-            {selectedFormat === 'video' ? `${quality}p` : `${quality}kbps`}
-          </a>
-        </li>
-      ))}
-    </ul>
-  </div>
-</div>
+                <button 
+                  id="qualityDropdownButton" 
+                  data-dropdown-toggle="qualityDropdown" 
+                  className="text-gray-700 bg-white/50 hover:bg-gray-50 border border-red-200 focus:border-red-500 focus:outline-none focus:ring-red-100 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-between w-full shadow-sm"
+                  type="button"
+                  onClick={() => document.getElementById('qualityDropdown').classList.toggle('hidden')}
+                >
+                  {selectedFormat === 'video' ? `${selectedQuality}p` : `${selectedQuality}kbps`}
+                  <svg className="w-2.5 h-2.5 ms-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                    <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 1 4 4 4-4"/>
+                  </svg>
+                </button>
+                
+                {/* Dropdown menu */}
+                <div id="qualityDropdown" className="z-10 hidden bg-white divide-y divide-gray-100 rounded-xl shadow-sm w-full mt-1 border border-red-100">
+                  <ul className="py-2 text-sm text-gray-700" aria-labelledby="qualityDropdownButton">
+                    {qualityOptions[selectedFormat].map((quality) => (
+                      <li key={quality}>
+                        <a 
+                          href="#" 
+                          className="block px-4 py-2 hover:bg-red-50"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setSelectedQuality(quality);
+                            document.getElementById('qualityDropdown').classList.add('hidden');
+                          }}
+                        >
+                          {selectedFormat === 'video' ? `${quality}p` : `${quality}kbps`}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
-
-          {/* URL Input */}
-          <div className="relative group">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="Paste your YouTube video link here..."
-              className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all pr-12 bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
-            />
-            <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 hover:text-green-500 transition-colors " />
-          </div>
 
           {/* Error Message */}
           {error && (
@@ -272,12 +418,12 @@ function App() {
           )}
         </div>
         {/* Footer Note */}
-    <div className="text-center mt-8 space-y-2">
-      <p className="text-sm text-gray-600">
-        Made with <Heart className="w-4 h-4 inline-block text-red-600 animate-pulse" /> for YouTube lovers
-      </p>
-      <p className="text-xs text-gray-500">Select format • Paste link • Download • Enjoy!</p>
-    </div>
+        <div className="text-center mt-8 space-y-2">
+          <p className="text-sm text-gray-600">
+            Made with <Heart className="w-4 h-4 inline-block text-red-600 animate-pulse" /> for YouTube lovers
+          </p>
+          <p className="text-xs text-gray-500">Select format • Paste link • Download • Enjoy!</p>
+        </div>
       </div>
     </div>
   );

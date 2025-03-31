@@ -272,5 +272,55 @@ def download():
         print(f"Download failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/search', methods=['GET'])
+def search():
+    query = request.args.get('q', '')
+    
+    if not query:
+        return jsonify({'error': 'Search query is required'}), 400
+    
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': 'in_playlist',
+            'default_search': 'ytsearch10:',
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            results = ydl.extract_info(f"ytsearch10:{query}", download=False)
+            
+            if not results or 'entries' not in results:
+                return jsonify([])
+            
+            videos = []
+            for entry in results['entries']:
+                # Format upload date
+                upload_date = entry.get('upload_date', '')
+                if upload_date:
+                    try:
+                        from datetime import datetime
+                        date_obj = datetime.strptime(upload_date, '%Y%m%d')
+                        upload_date = date_obj.strftime('%b %d, %Y')
+                    except:
+                        upload_date = ''
+
+                videos.append({
+                    'id': entry['id'],
+                    'title': entry['title'],
+                    'channel': entry.get('channel', 'Unknown Channel'),
+                    'thumbnail': entry.get('thumbnail', ''),
+                    'duration': entry.get('duration', 0),
+                    'views': entry.get('view_count', 0),
+                    'description': entry.get('description', ''),
+                    'uploadDate': upload_date
+                })
+            
+            return jsonify(videos)
+            
+    except Exception as e:
+        print(f"Search failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
