@@ -7,9 +7,24 @@ from flask_cors import CORS
 import requests
 import subprocess
 import time
+import json
+import uuid
+from werkzeug.utils import secure_filename
+import re
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+# Configure upload and output folders for video cutting
+UPLOAD_FOLDER = 'temp_uploads'
+OUTPUT_FOLDER = 'output_videos'
+ALLOWED_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm'}
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def download_video(url, quality="1080"):
     format_code = {
@@ -320,6 +335,292 @@ def search():
             
     except Exception as e:
         print(f"Search failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cut-video', methods=['POST'])
+def cut_video():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({'error': 'File type not allowed'}), 400
+    
+    try:
+        # Parse cut points from the request
+        cut_points = json.loads(request.form.get('cutPoints', '[]'))
+        
+        if not cut_points:
+            return jsonify({'error': 'No cut points provided'}), 400
+        
+        # Generate unique ID for this job
+        job_id = str(uuid.uuid4())
+        
+        # Save uploaded file
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(UPLOAD_FOLDER, f"{job_id}_{filename}")
+        file.save(input_path)
+        
+        # Prepare output files
+        output_files = []
+        
+        for idx, point in enumerate(cut_points):
+            start_time = point.get('start', '00:00:00')
+            end_time = point.get('end', '00:01:00')
+            
+            # Generate output filename
+            output_filename = f"{job_id}_cut_{idx+1}_{filename}"
+            output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+            
+            # Use FFmpeg to cut the video
+            subprocess.run([
+                'ffmpeg',
+                '-i', input_path,
+                '-ss', start_time,
+                '-to', end_time,
+                '-c', 'copy',  # Use copy mode for faster processing
+                output_path
+            ], check=True)
+            
+            output_files.append(output_path)
+        
+        # Create a response with output file info
+        response = {
+            'success': True,
+            'job_id': job_id,
+            'output_files': [os.path.basename(f) for f in output_files]
+        }
+        
+        # Clean up the input file
+        os.remove(input_path)
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        # Clean up any temporary files on error
+        if 'input_path' in locals() and os.path.exists(input_path):
+            os.remove(input_path)
+            
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/download-cut/<job_id>/<filename>', methods=['GET'])
+def download_cut(job_id, filename):
+    """Endpoint to download a processed video segment"""
+    # Try both filename formats
+    possible_paths = [
+        os.path.join(OUTPUT_FOLDER, f"{job_id}_{filename}"),
+        os.path.join(OUTPUT_FOLDER, f"{job_id}_cut_{filename}"),
+        os.path.join(OUTPUT_FOLDER, filename)  # Fallback to exact filename
+    ]
+    
+    file_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            file_path = path
+            break
+    
+    if not file_path:
+        # List available files for debugging
+        available_files = os.listdir(OUTPUT_FOLDER)
+        print(f"Available files: {available_files}")
+        print(f"Looking for job_id: {job_id}, filename: {filename}")
+        return jsonify({'error': 'File not found'}), 404
+    
+    try:
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        print(f"Error sending file: {str(e)}")
+        return jsonify({'error': 'Error sending file'}), 500
+
+@app.route('/api/job-status/<job_id>', methods=['GET'])
+def job_status(job_id):
+    """Endpoint to check the status of a cutting job"""
+    output_files = [f for f in os.listdir(OUTPUT_FOLDER) if f.startswith(f"{job_id}_cut_")]
+    
+    if not output_files:
+        return jsonify({
+            'status': 'processing',
+            'message': 'Job is still processing or not found'
+        }), 200
+    
+    return jsonify({
+        'status': 'completed',
+        'output_files': output_files
+    }), 200
+
+def get_video_id(url):
+    """Extract video ID from YouTube URL"""
+    # First pattern: match youtube.com or youtu.be domains
+    domain_pattern = r'(?:youtube|youtu|youtube-nocookie)\.(?:com|be)/'
+    # Second pattern: match video ID after various URL patterns
+    id_pattern = r'(?:watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
+    
+    # Try to match the domain pattern first
+    if re.search(domain_pattern, url):
+        # Then try to extract the video ID
+        match = re.search(id_pattern, url)
+        if match:
+            return match.group(1)
+    
+    return None
+
+@app.route('/api/video-info', methods=['POST', 'OPTIONS'])
+def video_info():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    data = request.json
+    url = data.get('url')
+    
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if not info:
+                return jsonify({'error': 'Could not fetch video information'}), 400
+            
+            return jsonify({
+                'title': info.get('title', ''),
+                'duration': info.get('duration', 0),
+                'thumbnail': info.get('thumbnail', ''),
+                'description': info.get('description', ''),
+                'channel': info.get('channel', ''),
+                'view_count': info.get('view_count', 0),
+                'upload_date': info.get('upload_date', '')
+            })
+            
+    except Exception as e:
+        print(f"Video info extraction failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/prepare-youtube', methods=['POST', 'OPTIONS'])
+def prepare_youtube():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    data = request.json
+    url = data.get('url')
+    
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    
+    try:
+        # Extract video ID
+        video_id = get_video_id(url)
+        if not video_id:
+            return jsonify({'error': 'Invalid YouTube URL'}), 400
+            
+        # Get video info to determine size
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+        }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+            if not info:
+                return jsonify({'error': 'Could not fetch video information'}), 400
+            
+            # Return video ID and size info
+            return jsonify({
+                'videoId': video_id,
+                'size': info.get('filesize', 0),
+                'title': info.get('title', ''),
+                'duration': info.get('duration', 0)
+            })
+            
+    except Exception as e:
+        print(f"Video preparation failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cut-youtube', methods=['POST', 'OPTIONS'])
+def cut_youtube():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    data = request.json
+    url = data.get('url')
+    cut_points = data.get('cutPoints', [])
+    format_type = data.get('format', 'video')
+    
+    if not url or not cut_points:
+        return jsonify({'error': 'URL and cut points are required'}), 400
+    
+    try:
+        # Generate unique ID for this job
+        job_id = str(uuid.uuid4())
+        
+        # Download the video to a temporary file
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_file = os.path.join(temp_dir, "video.mp4")
+            
+            ydl_opts = {
+                'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',  # Fallback options
+                'merge_output_format': 'mp4',
+                'outtmpl': temp_file,
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': False,
+                'nocheckcertificate': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                title = info.get('title', 'video')
+            
+            # Prepare output files
+            output_files = []
+            
+            for idx, point in enumerate(cut_points):
+                start_time = point.get('start', '00:00:00')
+                end_time = point.get('end', '00:01:00')
+                
+                # Generate output filename
+                output_filename = f"{job_id}_cut_{idx+1}_{title}.mp4"
+                output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+                
+                # Use FFmpeg to cut the video
+                subprocess.run([
+                    'ffmpeg',
+                    '-i', temp_file,
+                    '-ss', start_time,
+                    '-to', end_time,
+                    '-c', 'copy',  # Use copy mode for faster processing
+                    output_path
+                ], check=True)
+                
+                output_files.append(output_path)
+            
+            # Create a response with output file info
+            response = {
+                'success': True,
+                'job_id': job_id,
+                'output_files': [os.path.basename(f) for f in output_files]
+            }
+            
+            return jsonify(response), 200
+            
+    except Exception as e:
+        print(f"YouTube video cutting failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
