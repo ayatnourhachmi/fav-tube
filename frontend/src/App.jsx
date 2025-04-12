@@ -208,7 +208,208 @@ function App() {
       case 'transcript': return <TranscriptTab />;
       default:
         // original home tab content continues...
-        return (/* keep the rest of your original homepage JSX here unchanged */);
+        return (
+          <div className="bg-gradient-to-br from-red-100/90 to-red-50/90 backdrop-blur-lg rounded-3xl shadow-xl p-8 border border-red-200">
+            {/* Input Mode Tabs */}
+            <div className="flex space-x-2 mb-4">
+              <button
+                onClick={() => setInputMode('search')}
+                className={`flex-1 py-2 px-4 rounded-xl font-medium transition-all ${
+                  inputMode === 'search'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                    : 'bg-red-50 text-gray-700 hover:bg-red-100'
+                }`}
+              >
+                Search Videos
+              </button>
+              <button
+                onClick={() => setInputMode('url')}
+                className={`flex-1 py-2 px-4 rounded-xl font-medium transition-all ${
+                  inputMode === 'url'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg'
+                    : 'bg-red-50 text-gray-700 hover:bg-red-100'
+                }`}
+              >
+                Paste URL
+              </button>
+            </div>
+
+            {/* Create a portal div for search results to escape any containment issues */}
+            <div id="search-results-portal"></div>
+
+            {/* Search Input */}
+            {inputMode === 'search' && (
+              <div id="search-container" className="relative group">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search YouTube videos..."
+                  className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all pr-12 bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
+                />
+                {isSearching ? (
+                  <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 animate-spin" />
+                ) : (
+                  <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 hover:text-green-500 transition-colors" />
+                )}
+
+                {/* Search Results Dropdown */}
+                {showResults && searchResults.length > 0 && (
+                  <div className="fixed inset-0 flex items-start justify-center z-[1000] pointer-events-none pt-32 px-4" style={{ top: '0', left: '0', width: '100%' }}>
+                    <div 
+                      className="bg-white rounded-xl shadow-xl border border-red-100 overflow-hidden pointer-events-auto max-h-96 overflow-y-auto"
+                      style={{ 
+                        width: document.getElementById('search-container')?.offsetWidth || 'auto',
+                        maxWidth: 'calc(100vw - 2rem)'
+                      }}
+                    >
+                      {searchResults.map((video) => (
+                        <div
+                          key={video.id}
+                          onClick={() => handleVideoSelect(video.id)}
+                          className="flex items-center p-4 hover:bg-red-50 cursor-pointer transition-colors border-b border-red-50 last:border-b-0"
+                        >
+                          <div className="relative w-32 h-20 flex-shrink-0">
+                            <img
+                              src={video.thumbnail}
+                              alt={video.title}
+                              className="w-full h-full object-cover rounded-md shadow-sm"
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = `https://via.placeholder.com/320x180?text=No+Thumbnail`;
+                              }}
+                            />
+                          </div>
+                          <div className="ml-4 flex-1 min-w-0">
+                            <h3 className="text-sm font-semibold text-gray-900 mb-1 line-clamp-2">{video.title}</h3>
+                            <p className="text-xs text-gray-500 flex items-center">
+                              <span className="truncate">{video.channel}</span>
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* URL Input */}
+            {inputMode === 'url' && (
+              <div className="relative group">
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="Paste your YouTube video link here..."
+                  className="w-full px-6 py-4 rounded-xl border-2 border-red-200 focus:border-red-500 outline-none text-gray-700 transition-all bg-white/50 backdrop-blur-sm placeholder:text-gray-500"
+                />
+              </div>
+            )}
+
+            {/* Format Buttons */}
+            <div className="grid grid-cols-3 gap-3 mb-6 mt-6">
+              {formatOptions.map((format) => {
+                const Icon = format.icon;
+                return (
+                  <button
+                    key={format.id}
+                    onClick={() => setSelectedFormat(format.id)}
+                    className={`relative p-4 rounded-xl transition-all ${
+                      selectedFormat === format.id ? `bg-gradient-to-r ${format.color} text-white shadow-lg scale-[1.02]` : 'bg-red-50 text-gray-700 hover:bg-red-100'
+                    }`}
+                  >
+                    <div className="flex flex-col items-center space-y-2">
+                      <Icon className="w-6 h-6" />
+                      <span className="text-sm font-medium">{format.label}</span>
+                    </div>
+                    {selectedFormat === format.id && <CheckCircle2 className="absolute top-2 right-2 w-4 h-4" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quality Selector */}
+            {selectedFormat !== 'thumbnail' && (
+              <div className="mb-6">
+                <label className="block text-sm text-gray-600 mb-1">
+                  {selectedFormat === 'video' ? 'Select Video Quality' : 'Select Audio Quality'}
+                </label>
+                <div className="w-full relative inline-block text-left">
+                  <button 
+                    id="qualityDropdownButton" 
+                    data-dropdown-toggle="qualityDropdown" 
+                    className="text-gray-700 bg-white/50 hover:bg-gray-50 border border-red-200 focus:border-red-500 focus:outline-none focus:ring-red-100 font-medium rounded-xl text-sm px-5 py-2.5 text-center inline-flex items-center justify-between w-full shadow-sm"
+                    type="button"
+                    onClick={() => document.getElementById('qualityDropdown').classList.toggle('hidden')}
+                  >
+                    {selectedFormat === 'video' ? `${selectedQuality}p` : `${selectedQuality}kbps`}
+                    <svg className="w-2.5 h-2.5 ms-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                      <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m1 1 4 4 4-4"/>
+                    </svg>
+                  </button>
+                  
+                  {/* Dropdown menu */}
+                  <div id="qualityDropdown" className="z-10 hidden bg-white divide-y divide-gray-100 rounded-xl shadow-sm w-full mt-1 border border-red-100">
+                    <ul className="py-2 text-sm text-gray-700" aria-labelledby="qualityDropdownButton">
+                      {qualityOptions[selectedFormat].map((quality) => (
+                        <li key={quality}>
+                          <a 
+                            href="#" 
+                            className="block px-4 py-2 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSelectedQuality(quality);
+                              document.getElementById('qualityDropdown').classList.add('hidden');
+                            }}
+                          >
+                            {selectedFormat === 'video' ? `${quality}p` : `${quality}kbps`}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="mt-4 p-3 bg-red-100 border border-red-200 rounded-lg flex items-center space-x-2 text-red-700">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Ready Message */}
+            {downloadReady && (
+              <div className="mt-4 p-3 bg-green-100 border border-green-200 rounded-lg flex items-center space-x-2 text-green-700">
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                <p className="text-sm">Download ready! Click the green button to save the file.</p>
+              </div>
+            )}
+
+            {/* Process Button (Red) or Download Button (Green) */}
+            {!downloadReady ? (
+              <button
+                onClick={handleProcessVideo}
+                disabled={isLoading}
+                className="mt-6 w-full bg-gradient-to-r from-red-700 to-red-800 text-white py-4 px-6 rounded-xl font-medium flex items-center justify-center space-x-2 hover:from-red-800 hover:to-red-900 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl disabled:opacity-70"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                <span>{isLoading ? "Processing..." : "Process Video"}</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleDownload}
+                className="mt-6 w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-4 px-6 rounded-xl font-medium flex items-center justify-center space-x-2 hover:from-green-700 hover:to-green-800 transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
+              >
+                <Download className="w-5 h-5" />
+                <span>Download</span>
+              </button>
+            )}
+          </div>
+        );
     }
   };
 
@@ -242,6 +443,6 @@ function App() {
       </div>
     </div>
   );
-};
+}
 
 export default App;
