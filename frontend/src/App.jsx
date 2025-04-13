@@ -175,6 +175,155 @@ function App() {
     </div>
   );
 
+  const renderHomeContent = () => (
+    <div className="bg-gradient-to-br from-red-100/90 to-red-50/90 backdrop-blur-lg rounded-3xl shadow-xl p-8 border border-red-200">
+      <div id="search-container" className="relative z-10">
+        <div className="flex">
+          <div className="flex-1">
+            <div className="relative">
+              {inputMode === 'search' ? (
+                <input
+                  type="text"
+                  className="w-full p-4 pl-12 pr-4 rounded-l-xl border-2 border-r-0 border-red-300 focus:outline-none focus:border-red-500 transition-colors"
+                  placeholder="Search for YouTube videos..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onFocus={() => setShowResults(searchResults.length > 0)}
+                />
+              ) : (
+                <input
+                  type="text"
+                  className="w-full p-4 pl-12 pr-4 rounded-l-xl border-2 border-r-0 border-red-300 focus:outline-none focus:border-red-500 transition-colors"
+                  placeholder="Enter YouTube URL..."
+                  value={url}
+                  onChange={e => setUrl(e.target.value)}
+                />
+              )}
+              <div className="absolute left-4 top-4 text-red-400">
+                {inputMode === 'search' ? <Sparkles className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+              </div>
+            </div>
+            {showResults && searchResults.length > 0 && (
+              <div className="absolute w-full bg-white rounded-b-xl shadow-lg max-h-80 overflow-y-auto z-20 border-2 border-t-0 border-red-300">
+                {searchResults.map(video => (
+                  <div 
+                    key={video.id} 
+                    className="flex p-3 hover:bg-red-50 cursor-pointer transition-colors border-b border-red-100 last:border-b-0"
+                    onClick={() => handleVideoSelect(video.id)}
+                  >
+                    <img 
+                      src={video.thumbnail} 
+                      alt={video.title} 
+                      className="w-24 h-16 object-cover rounded"
+                      onError={e => e.target.src = 'https://via.placeholder.com/120x80?text=Error'}
+                    />
+                    <div className="ml-3 flex-1">
+                      <div className="font-medium text-gray-800 line-clamp-1">{video.title}</div>
+                      <div className="text-xs text-gray-500">{video.author}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <button 
+            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white p-4 rounded-r-xl font-medium transition-colors flex items-center justify-center min-w-[100px]"
+            onClick={() => setInputMode(inputMode === 'search' ? 'url' : 'search')}
+          >
+            {inputMode === 'search' ? 'URL' : 'Search'}
+          </button>
+        </div>
+
+        <div className="mt-6">
+          <div className="text-lg font-medium text-gray-700 mb-3">Choose format:</div>
+          <div className="grid grid-cols-3 gap-3">
+            {formatOptions.map(format => (
+              <button
+                key={format.id}
+                className={`p-3 rounded-xl flex flex-col items-center border-2 transition-all ${
+                  selectedFormat === format.id 
+                    ? `border-red-400 bg-gradient-to-br ${format.color} text-white shadow-md` 
+                    : 'border-gray-200 bg-white hover:border-red-300'
+                }`}
+                onClick={() => setSelectedFormat(format.id)}
+              >
+                <format.icon className={`w-6 h-6 ${selectedFormat === format.id ? 'text-white' : 'text-red-500'}`} />
+                <span className="mt-1 font-medium">{format.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {(selectedFormat === 'video' || selectedFormat === 'audio') && (
+          <div className="mt-6">
+            <div className="text-lg font-medium text-gray-700 mb-3">Choose quality:</div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {qualityOptions[selectedFormat].map(quality => (
+                <button
+                  key={quality}
+                  className={`p-2 rounded-lg text-center border-2 transition-all ${
+                    selectedQuality === quality 
+                      ? 'border-red-400 bg-gradient-to-br from-red-500 to-red-600 text-white shadow-md' 
+                      : 'border-gray-200 bg-white hover:border-red-300'
+                  }`}
+                  onClick={() => setSelectedQuality(quality)}
+                >
+                  <span className="font-medium">
+                    {selectedFormat === 'video' ? `${quality}p` : `${quality}k`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-8">
+          {downloadReady ? (
+            <button
+              className="w-full p-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white font-medium flex items-center justify-center space-x-2 transition-colors"
+              onClick={handleDownload}
+            >
+              <Download className="w-5 h-5" />
+              <span>Download Now</span>
+            </button>
+          ) : (
+            <button
+              className="w-full p-4 rounded-xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-medium flex items-center justify-center space-x-2 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              onClick={handleProcessVideo}
+              disabled={isLoading || !url}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-5 h-5" />
+                  <span>Process Video</span>
+                </>
+              )}
+            </button>
+          )}
+          
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          
+          {downloadReady && (
+            <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-600 flex items-center space-x-2">
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <span>Your download is ready! Click the button above to download.</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-100 via-red-50 to-emerald-50 relative overflow-hidden">
       <Navbar onTabChange={setActiveTab} />
